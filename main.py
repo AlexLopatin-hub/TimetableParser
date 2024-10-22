@@ -5,6 +5,7 @@ import logging
 from bs4 import BeautifulSoup
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+from datetime import datetime
 
 
 logging.basicConfig(level=logging.INFO)
@@ -49,8 +50,13 @@ def get_daily_timetable(link: str) -> str:
     res = ''
     response = requests.get(link).text
     soup = BeautifulSoup(response, 'lxml')
-    day = soup.select('.schedule__day')[0]
-    date = day.select('.schedule__date')[0].text
+    date = ''
+    for day in soup.select('.schedule__day'):
+        date = day.select('.schedule__date')[0].text
+        if int(date[:2]) == datetime.now().day:
+            break
+    else:
+        return 'Ошибка: не получено расписание на текущую дату'
     res += date + '\n\n'
     for lesson in day.select('.lesson'):
         start_time = lesson.select('.lesson__time')[0].find_all('span')[0].text

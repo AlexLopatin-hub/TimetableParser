@@ -1,5 +1,3 @@
-from turtledemo.penrose import start
-
 import requests
 import asyncio
 import logging
@@ -42,8 +40,6 @@ def get_weekly_timetable(link: str) -> str:
                     f'{lesson_type}\n'
                     f'{teacher}\n'
                     f'{place}\n\n')
-
-
         res += '\n'
     return res
 
@@ -61,27 +57,22 @@ def get_daily_timetable(link: str) -> str:
         return 'Ошибка: не получено расписание на текущую дату'
     res += date + '\n\n'
     for lesson in day.select('.lesson'):
-        lesson_subject = lesson.select('.lesson__subject')[0]
-        start_time = lesson_subject.select('.lesson__time')[0].find_all('span')
-        end_time = start_time[2].text
-        start_time = start_time[0].text
-        lesson_subject = lesson_subject.find_all('span')[5].text
-
-        lesson_params = lesson.select('.lesson__params')[0]
-        lesson_type = lesson_params.select('.lesson__type')[0].text
-        teacher = lesson_params.select('.lesson__teachers')
+        start_time = lesson.select('.lesson__time')[0].find_all('span')[0].text
+        end_time = lesson.select('.lesson__time')[0].find_all('span')[2].text
+        lesson_subject = lesson.find_all('span')[5].text
+        lesson_type = lesson.select('.lesson__type')[0].text
+        teacher = lesson.select('.lesson__teachers')
         if teacher:
             teacher = teacher[0].find_all('span')[2].text
         else:
             teacher = 'Неизвестно'
-        place = lesson_params.select('.lesson__places')[0].find_all('span')
+        place = lesson.select('.lesson__places')[0].find_all('span')
         place = f'{place[0].text.strip()} {place[6].text.strip()} {place[7].text}'
         res += (f'{start_time} - {end_time}\n'
                 f'{lesson_subject}\n'
                 f'{lesson_type}\n'
                 f'{teacher}\n'
                 f'{place}\n\n')
-
     return res
 
 

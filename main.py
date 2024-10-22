@@ -15,7 +15,7 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 
-def get_weekly_timetable(link):
+def get_weekly_timetable(link: str) -> str:
     res = ''
     response = requests.get(link).text
     soup = BeautifulSoup(response, 'lxml')
@@ -78,6 +78,11 @@ async def start_command(message: types.Message):
     await message.answer('Введи команду /daily_timetable или /weekly_timetable, чтобы получить расписание на неделю')
 
 
+@dp.message(Command('menu'))
+async def display_menu(message: types.Message):
+    await message.answer('Введи команду /daily_timetable или /weekly_timetable, чтобы получить расписание на неделю')
+
+
 @dp.message(Command('daily_timetable'))
 async def print_daily_timetable(message: types.Message):
     link = 'https://ruz.spbstu.ru/faculty/125/groups/40399'
@@ -88,7 +93,6 @@ async def print_daily_timetable(message: types.Message):
 async def print_weekly_timetable(message: types.Message):
     link = 'https://ruz.spbstu.ru/faculty/125/groups/40399'
     await message.answer(get_weekly_timetable(link))
-
 
 
 async def main():

@@ -54,8 +54,11 @@ class CacheManager:
 _cache_manager = CacheManager()
 
 
+_SIMPLE_TYPES = (str, int, float, bool, type(None), list, tuple, dict)
+
+
 def _make_cache_key(*args, **kwargs) -> str:
-    filtered_args = [arg for arg in args if not isinstance(arg, type)]
+    filtered_args = [arg for arg in args if isinstance(arg, _SIMPLE_TYPES)]
     args_str = "|".join(str(arg) for arg in filtered_args)
     kwargs_str = "|".join(f"{k}={v}" for k, v in sorted(kwargs.items()))
     return f"{args_str}:{kwargs_str}".replace(" ", "")

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from aiogram import Router, types
+from aiogram import Router, types, F
 from aiogram.filters import Command
 
 from parser.parser import Parser
@@ -59,38 +59,32 @@ async def print_weekly_timetable(message: types.Message, parser: Parser, db: Dat
     await message.answer(text, parse_mode="HTML")
 
 
-@router.message(Command("search"))
-async def search_group_command(message: types.Message):
-    await message.answer(
-        "Введите название группы для поиска (например: 3530904/10001):"
-    )
+@router.callback_query(F.data.startswith("srch:"))
+async def on_search_result_selected(callback: types.CallbackQuery, parser: Parser, db: Database):
+    group_id = int(callback.data.split(":")[1])
 
-
-@router.message()
-async def process_group_input(message: types.Message, parser: Parser, db: Database):
-    raw_input = message.text.strip()
-
-    if len(raw_input) < 2:
-        return
-
-    if raw_input.startswith("/"):
-        return
-
-    await message.answer("Проверяю группу в базе Политеха...")
-
-    group_info = await parser.search_group(raw_input)
-
-    if not group_info:
-        await message.answer("Группа не найдена. Убедитесь, что написали её правильно (например: 3530904/10001).")
-        return
+    group_name = "Неизвестная группа"
+    if callback.message.reply_markup and callback.message.reply_markup.inline_keyboard:
+        for row in callback.message.reply_markup.inline_keyboard:
+            for btn in row:
+                if getattr(btn, "callback_data", None) == callback.data:
+                    group_name = btn.text
+                    break
 
     await db.set_user_group(
-        user_id=message.from_user.id,
-        group_id=group_info["id"],
-        group_name=group_info["name"]
+        user_id=callback.from_user.id,
+        group_id=group_id,
+        group_name=group_name,
     )
 
-    await message.answer(
-        f"Группа {group_info['name']} успешно привязана.\n"
-        "Используйте /today или /week для просмотра расписания."
+    await callback.message.edit_text(
+        f"Группа «{group_name}» успешно привязана!\n"
+        "Используйте /today для расписания на сегодня, /week — на неделю."
     )
+    await callback.answer("Группа сохранена ✅")
+
+
+@router.callback_query(F.data == "srch_cancel")
+async def on_search_cancelled(callback: types.CallbackQuery):
+    await callback.message.edit_text("Поиск отменён.")
+    await callback.answer()

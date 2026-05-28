@@ -22,7 +22,8 @@ class Parser:
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
 
-    async def search_group(self, group_name: str) -> Optional[dict[str, Any]]:
+    async def search_group(self, group_name: str) -> list[dict[str, Any]]:
+        """Search groups by name. Returns a list of matching groups (id + name)."""
         url = f"{self.base_url}/api/v1/ruz/search/groups"
         params = {"q": group_name}
 
@@ -31,12 +32,10 @@ class Parser:
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
                         data = await response.json()
-                        groups = data.get("groups", [])
-                        if groups:
-                            return {"id": groups[0]["id"], "name": groups[0]["name"]}
+                        return data.get("groups", [])
             except Exception:
                 pass
-        return None
+        return []
 
     async def get_faculties(self) -> list[dict[str, Any]]:
         url = f"{self.base_url}/api/v1/ruz/faculties"

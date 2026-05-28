@@ -3,16 +3,21 @@ from collections import defaultdict
 
 from aiogram import Router, types, F
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from parser.parser import Parser
 from storage.db import Database
 
+class SearchState(StatesGroup):
+    waiting_for_query = State()
+
+
 router = Router(name="groups_router")
 
 ITEMS_PER_PAGE = 10
 
-# Cached data loaded once during navigation
 _cached_faculties: list[dict] | None = None
 
 
@@ -42,8 +47,6 @@ def _group_groups_by_level(groups: list[dict]) -> dict[int, list[dict]]:
     return by_level
 
 
-# --- Faculty keyboard ---
-
 def build_faculties_keyboard(faculties: list[dict], page: int = 0) -> types.InlineKeyboardMarkup:
     total_pages = max(math.ceil(len(faculties) / ITEMS_PER_PAGE), 1)
     page = max(0, min(page, total_pages - 1))
@@ -67,7 +70,19 @@ def build_faculties_keyboard(faculties: list[dict], page: int = 0) -> types.Inli
     return builder.as_markup()
 
 
-# --- Course keyboard ---
+async def show_faculties(message: types.Message, parser: Parser, page: int):
+    msg = await message.answer("Загружаю список факультетов...")
+
+    faculties = await _get_all_faculties_with_groups(parser)
+    if not faculties:
+        await msg.edit_text("Не удалось загрузить список факультетов. Попробуйте позже.")
+        return
+
+    await msg.edit_text(
+        "Выберите факультет:",
+        reply_markup=build_faculties_keyboard(faculties, page),
+    )
+
 
 def build_courses_keyboard(levels: dict[int, list[dict]], faculty_id: int) -> types.InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -82,8 +97,6 @@ def build_courses_keyboard(levels: dict[int, list[dict]], faculty_id: int) -> ty
     builder.row(types.InlineKeyboardButton(text="🔙 К факультетам", callback_data="fac_page:0"))
     return builder.as_markup()
 
-
-# --- Group keyboard ---
 
 def build_groups_keyboard(
     groups: list[dict], faculty_id: int, level: int, page: int = 0
@@ -123,44 +136,12 @@ def build_groups_keyboard(
     return builder.as_markup()
 
 
-# --- Handlers ---
-
-@router.message(Command("start"))
-async def start_command(message: types.Message, parser: Parser, db: Database):
-    user_data = await db.get_user_data(message.from_user.id)
-
-    if user_data:
-        await message.answer(
-            f"Ваша группа: {user_data['group_name']}\n"
-            "Используйте /today или /week для расписания, /change_group для смены группы."
-        )
-        return
-
-    await show_faculties(message, parser, page=0)
-
-
-async def show_faculties(message: types.Message, parser: Parser, page: int):
-    msg = await message.answer("Загружаю список факультетов...")
-
-    faculties = await _get_all_faculties_with_groups(parser)
-    if not faculties:
-        await msg.edit_text("Не удалось загрузить список факультетов. Попробуйте позже.")
-        return
-
-    await msg.edit_text(
-        "Выберите факультет:",
-        reply_markup=build_faculties_keyboard(faculties, page),
-    )
-
-
 @router.message(Command("change_group"))
 async def change_group_command(message: types.Message, parser: Parser):
     global _cached_faculties
-    _cached_faculties = None  # invalidate cache
+    _cached_faculties = None
     await show_faculties(message, parser, page=0)
 
-
-# --- Faculty callbacks ---
 
 @router.callback_query(F.data.startswith("fac_page:"))
 async def on_faculty_page(callback: types.CallbackQuery, parser: Parser):
@@ -218,8 +199,6 @@ async def on_faculty_selected(callback: types.CallbackQuery, parser: Parser):
     await callback.answer()
 
 
-# --- Course callbacks ---
-
 @router.callback_query(F.data.startswith("course:"))
 async def on_course_selected(callback: types.CallbackQuery, parser: Parser):
     # data: course:{faculty_id}:{level}
@@ -261,11 +240,72 @@ async def on_course_selected(callback: types.CallbackQuery, parser: Parser):
     await callback.answer()
 
 
-# --- Group callbacks ---
+def build_search_results_keyboard(groups: list[dict]) -> types.InlineKeyboardMarkup:
+    """Build an inline keyboard with matching groups."""
+    builder = InlineKeyboardBuilder()
+    for g in groups:
+        builder.button(text=g["name"], callback_data=f"srch:{g['id']}")
+    builder.adjust(1)
+    builder.row(types.InlineKeyboardButton(
+        text="❌ Отмена", callback_data="srch_cancel"
+    ))
+    return builder.as_markup()
+
+
+@router.message(Command("search"))
+async def search_group_command(message: types.Message, state: FSMContext):
+    await state.set_state(SearchState.waiting_for_query)
+    await message.answer(
+        "Введите название группы для поиска (например: 3530904/10001):"
+    )
+
+
+@router.message(SearchState.waiting_for_query)
+async def process_search_query(message: types.Message, parser: Parser, db: Database, state: FSMContext):
+    raw_input = message.text.strip()
+
+    if len(raw_input) < 2:
+        await message.answer("Слишком короткий запрос. Введите хотя бы 2 символа.")
+        return
+
+    if raw_input.startswith("/"):
+        await message.answer("Поиск отменён.")
+        await state.clear()
+        return
+
+    tmp_msg = await message.answer("Проверяю группу в базе Политеха...")
+
+    groups = await parser.search_group(raw_input)
+
+    if not groups:
+        await tmp_msg.edit_text(
+            "Группа не найдена. Убедитесь, что написали её правильно (например: 3530904/10001).\n"
+            "Попробуйте ещё раз или используйте другую команду."
+        )
+        return
+
+    if len(groups) == 1:
+        g = groups[0]
+        await db.set_user_group(
+            user_id=message.from_user.id,
+            group_id=g["id"],
+            group_name=g["name"],
+        )
+        await state.clear()
+        await tmp_msg.edit_text(
+            f"Группа «{g['name']}» успешно привязана!\n"
+            "Используйте /today для расписания на сегодня, /week — на неделю."
+        )
+    else:
+        await state.clear()
+        await tmp_msg.edit_text(
+            f"Найдено {len(groups)} групп:\nВыберите одну:",
+            reply_markup=build_search_results_keyboard(groups),
+        )
+
 
 @router.callback_query(F.data.startswith("grp_page:"))
 async def on_group_page(callback: types.CallbackQuery, parser: Parser):
-    # data: grp_page:{faculty_id}:{level}:{page}
     parts = callback.data.split(":")
     if len(parts) < 4:
         await callback.answer("Ошибка данных", show_alert=True)
@@ -297,7 +337,6 @@ async def on_group_page(callback: types.CallbackQuery, parser: Parser):
 async def on_group_selected(callback: types.CallbackQuery, parser: Parser, db: Database):
     group_id = int(callback.data.split(":")[1])
 
-    # Get group name from the button text
     group_name = "Неизвестная группа"
     if callback.message.reply_markup and callback.message.reply_markup.inline_keyboard:
         for row in callback.message.reply_markup.inline_keyboard:

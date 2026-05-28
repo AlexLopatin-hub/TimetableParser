@@ -34,10 +34,9 @@ class Database:
                 (user_id, group_id, group_name),
             )
             await db.commit()
-        # Очищаем кеш для этого пользователя
         await clear_cache(f"get_user_data:{user_id}")
 
-    @cached(ttl=1800)  # 30 минут для данных пользователя
+    @cached(ttl=1800) 
     async def get_user_data(self, user_id: int) -> dict | None:
         async with aiosqlite.connect(self.db_path) as db:
             async with db.execute(

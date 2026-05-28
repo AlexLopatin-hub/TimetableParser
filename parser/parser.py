@@ -1,6 +1,7 @@
 from typing import Any, Optional
 
 import aiohttp
+from storage.cache import cached
 
 
 WEEKDAY_NAMES = {
@@ -22,6 +23,7 @@ class Parser:
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
 
+    @cached(ttl=86400)  # 24 часа
     async def search_group(self, group_name: str) -> list[dict[str, Any]]:
         """Search groups by name. Returns a list of matching groups (id + name)."""
         url = f"{self.base_url}/api/v1/ruz/search/groups"
@@ -37,6 +39,7 @@ class Parser:
                 pass
         return []
 
+    @cached(ttl=86400)  # 24 часа
     async def get_faculties(self) -> list[dict[str, Any]]:
         url = f"{self.base_url}/api/v1/ruz/faculties"
         async with aiohttp.ClientSession() as session:
@@ -49,6 +52,7 @@ class Parser:
                 pass
         return []
 
+    @cached(ttl=86400)  # 24 часа
     async def get_groups_by_faculty(self, faculty_id: int) -> list[dict[str, Any]]:
         url = f"{self.base_url}/api/v1/ruz/faculties/{faculty_id}/groups"
         async with aiohttp.ClientSession() as session:
@@ -61,6 +65,7 @@ class Parser:
                 pass
         return []
 
+    @cached(ttl=3600)  # 1 час для расписания, так как оно может обновляться
     async def _fetch_schedule(self, group_id: int, date_str: str) -> Optional[dict[str, Any]]:
         """Fetch raw schedule from the scheduler endpoint."""
         url = f"{self.base_url}/api/v1/ruz/scheduler/{group_id}"

@@ -2,65 +2,81 @@ from datetime import datetime
 
 from aiogram import Router, types, F
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 
 from parser.parser import Parser
 from storage.db import Database
+from bot.handlers.base import show_main_menu
 
 router = Router(name="timetable_router")
 
 
+@router.message(F.text == "📅 Расписание на день")
 @router.message(Command("today"))
-async def print_daily_timetable(message: types.Message, parser: Parser, db: Database):
-    user_id = message.from_user.id
-
-    user_data = await db.get_user_data(user_id)
-
-    if not user_data:
-        await message.answer(
-            "Вы ещё не выбрали группу. Используйте /start для выбора."
-        )
-        return
-
-    current_date = datetime.now().strftime("%Y-%m-%d")
-
-    text = await parser.get_daily_timetable(
-        group_id=user_data["group_id"], date_str=current_date
-    )
-
-    if text is None:
-        await message.answer("Не удалось получить расписание. Попробуйте позже.")
-        return
-
-    await message.answer(text, parse_mode="HTML")
+async def print_daily_timetable(
+    message: types.Message,
+    parser: Parser,
+    db: Database,
+    state: FSMContext,
+):
+    await _show_timetable(message, parser, db, state, mode="day")
 
 
+@router.message(F.text == "📆 Расписание на неделю")
 @router.message(Command("week"))
-async def print_weekly_timetable(message: types.Message, parser: Parser, db: Database):
-    user_id = message.from_user.id
+async def print_weekly_timetable(
+    message: types.Message,
+    parser: Parser,
+    db: Database,
+    state: FSMContext,
+):
+    await _show_timetable(message, parser, db, state, mode="week")
 
-    user_data = await db.get_user_data(user_id)
+
+async def _show_timetable(
+    message: types.Message,
+    parser: Parser,
+    db: Database,
+    state: FSMContext,
+    *,
+    mode: str,
+):
+    await state.clear()
+
+    user_data = await db.get_user_data(message.from_user.id)
 
     if not user_data:
-        await message.answer(
-            "Вы ещё не выбрали группу. Используйте /start для выбора."
+        await show_main_menu(
+            message,
+            db,
+            text_override="⚠️ Сначала выберите группу.\n\nНажмите «👤 Мой профиль» → «Сменить группу».",
         )
         return
 
     current_date = datetime.now().strftime("%Y-%m-%d")
 
-    text = await parser.get_weekly_timetable(
-        group_id=user_data["group_id"], date_str=current_date
-    )
+    if mode == "day":
+        text = await parser.get_daily_timetable(
+            group_id=user_data["group_id"], date_str=current_date
+        )
+    else:
+        text = await parser.get_weekly_timetable(
+            group_id=user_data["group_id"], date_str=current_date
+        )
 
     if text is None:
-        await message.answer("Не удалось получить расписание. Попробуйте позже.")
+        await message.answer("❌ Не удалось получить расписание. Попробуйте позже.")
         return
 
     await message.answer(text, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("srch:"))
-async def on_search_result_selected(callback: types.CallbackQuery, parser: Parser, db: Database):
+async def on_search_result_selected(
+    callback: types.CallbackQuery,
+    parser: Parser,
+    db: Database,
+):
     group_id = int(callback.data.split(":")[1])
 
     group_name = "Неизвестная группа"
@@ -78,13 +94,13 @@ async def on_search_result_selected(callback: types.CallbackQuery, parser: Parse
     )
 
     await callback.message.edit_text(
-        f"Группа «{group_name}» успешно привязана!\n"
-        "Используйте /today для расписания на сегодня, /week — на неделю."
+        f"✅ Группа «{group_name}» успешно привязана!",
     )
     await callback.answer("Группа сохранена ✅")
 
 
 @router.callback_query(F.data == "srch_cancel")
-async def on_search_cancelled(callback: types.CallbackQuery):
-    await callback.message.edit_text("Поиск отменён.")
+async def on_search_cancelled(callback: types.CallbackQuery, db: Database):
+    await callback.message.edit_text("🚫 Поиск отменён.")
     await callback.answer()
+    await show_main_menu(callback.message, db)

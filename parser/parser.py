@@ -1,6 +1,7 @@
 from typing import Any, Optional
 
 import aiohttp
+import orjson
 from storage.cache import cached
 
 
@@ -33,7 +34,7 @@ class Parser:
             try:
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
-                        data = await response.json()
+                        data = await response.json(loads=orjson.loads)
                         return data.get("groups", [])
             except Exception:
                 pass
@@ -46,7 +47,7 @@ class Parser:
             try:
                 async with session.get(url) as response:
                     if response.status == 200:
-                        data = await response.json()
+                        data = await response.json(loads=orjson.loads)
                         return data.get("faculties", [])
             except Exception:
                 pass
@@ -59,7 +60,7 @@ class Parser:
             try:
                 async with session.get(url) as response:
                     if response.status == 200:
-                        data = await response.json()
+                        data = await response.json(loads=orjson.loads)
                         return data.get("groups", [])
             except Exception:
                 pass
@@ -75,7 +76,7 @@ class Parser:
             try:
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
-                        return await response.json()
+                        return await response.json(loads=orjson.loads)
             except Exception:
                 pass
         return None

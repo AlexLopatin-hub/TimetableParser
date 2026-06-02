@@ -192,21 +192,7 @@ async def show_profile(
     message: types.Message,
     db: Database,
 ):
-    user_data = await db.get_user_data(message.from_user.id)
-
-    if user_data:
-        text = (
-            f"👤 <b>Мой профиль</b>\n\n"
-            f"📌 Группа: <b>{user_data['group_name']}</b>"
-        )
-    else:
-        text = "👤 <b>Мой профиль</b>\n\n⚠️ Группа не выбрана."
-
-    builder = InlineKeyboardBuilder()
-    builder.button(text="🔄 Сменить группу", callback_data="chg_group_start")
-    builder.adjust(1)
-
-    await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    await show_main_menu(message, db)
 
 
 @router.callback_query(F.data == "chg_group_start")
